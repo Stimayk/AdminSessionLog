@@ -1,6 +1,8 @@
 # AdminSessionLog
 **Allows you to track the game duration of administrators and display it in Discord**
 
+Uses [CS2-Discord-Utilities](https://github.com/NockyCZ/CS2-Discord-Utilities) Accordingly requires [customizations](https://github.com/NockyCZ/CS2-Discord-Utilities?tab=readme-ov-file#installation)
+
 ![image](https://github.com/Stimayk/AdminSessionLog/assets/51941742/fd98ae66-5100-4836-accb-e74265a02a62)
 
 Features:
