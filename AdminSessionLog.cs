@@ -1,4 +1,4 @@
-﻿using CounterStrikeSharp.API;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
@@ -14,7 +14,7 @@ namespace AdminSessionLog
     public class AdminSessionLog : BasePlugin
     {
         public override string ModuleName => "AdminSessionLog";
-        public override string ModuleVersion => "v1.0";
+        public override string ModuleVersion => "v1.0.1";
         public override string ModuleAuthor => "E!N";
 
         private IDiscordUtilitiesAPI? DiscordUtilities;
@@ -198,7 +198,7 @@ namespace AdminSessionLog
         [ConsoleCommand("css_aslreload", "Reload Config")]
         [CommandHelper(whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
         [RequiresPermissions("@css/root")]
-        public void OnReloadConfigCommand(CommandInfo commandInfo)
+        public void OnReloadConfigCommand(CCSPlayerController? player, CommandInfo commandInfo)
         {
             string configPath = Path.Combine(GetConfigDirectory(), "AdminSessionLogConfig.json");
             _config = AdminSessionLogConfig.Load(configPath);
@@ -234,7 +234,7 @@ namespace AdminSessionLog
             if (!File.Exists(configPath))
             {
                 AdminSessionLogConfig defaultConfig = new();
-                File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Newtonsoft.Json.Formatting.Indented));
+                File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Formatting.Indented));
                 return defaultConfig;
             }
 
