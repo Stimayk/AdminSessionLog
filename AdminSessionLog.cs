@@ -7,6 +7,7 @@ using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
 using DiscordUtilitiesAPI;
 using DiscordUtilitiesAPI.Builders;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
 namespace AdminSessionLog
@@ -14,7 +15,7 @@ namespace AdminSessionLog
     public class AdminSessionLog : BasePlugin
     {
         public override string ModuleName => "AdminSessionLog";
-        public override string ModuleVersion => "v1.0.1";
+        public override string ModuleVersion => "v1.0.2";
         public override string ModuleAuthor => "E!N";
 
         private IDiscordUtilitiesAPI? DiscordUtilities;
@@ -31,13 +32,13 @@ namespace AdminSessionLog
             EnsureConfigDirectory(configDirectory);
             string configPath = Path.Combine(configDirectory, "AdminSessionLogConfig.json");
             _config = AdminSessionLogConfig.Load(configPath);
-            Console.WriteLine($"{ModuleName} | Configuration loaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
+            Logger.LogInformation($"Configuration loaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
 
             DiscordUtilities = new PluginCapability<IDiscordUtilitiesAPI>("discord_utilities").Get();
 
             if (DiscordUtilities == null)
             {
-                Console.WriteLine($"{ModuleName} | Error: Discord Utilities are not available.");
+                Logger.LogError($"Discord Utilities are not available.");
             }
             else
             {
@@ -55,7 +56,7 @@ namespace AdminSessionLog
             if (!Directory.Exists(directoryPath))
             {
                 Directory.CreateDirectory(directoryPath);
-                Console.WriteLine($"{ModuleName} | Created configuration directory at: {directoryPath}");
+                Logger.LogInformation($"Created configuration directory at: {directoryPath}");
             }
         }
 
@@ -63,7 +64,7 @@ namespace AdminSessionLog
         {
             if (_config == null)
             {
-                Console.WriteLine($"{ModuleName} | Error: Configuration is not loaded.");
+                Logger.LogError($"Configuration is not loaded.");
                 return;
             }
 
@@ -72,11 +73,11 @@ namespace AdminSessionLog
 
             if (channelId == 0)
             {
-                Console.WriteLine($"{ModuleName} | Error: Some configuration settings - ChannelID: {channelId}");
+                Logger.LogError($"Some configuration settings - ChannelID: {channelId}");
                 return;
             }
 
-            Console.WriteLine($"{ModuleName} | Initialized successfully.");
+            Logger.LogInformation($"Initialized successfully.");
         }
 
         [GameEventHandler]
@@ -84,7 +85,7 @@ namespace AdminSessionLog
         {
             if (_config?.AdminFlag == null || @event.Userid == null)
             {
-                Console.WriteLine($"{ModuleName} | Error: Admin flags are missing or Userid is null");
+                Logger.LogError($"Admin flags are missing or Userid is null");
                 return HookResult.Continue;
             }
 
@@ -114,7 +115,7 @@ namespace AdminSessionLog
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"{ModuleName} | Error sending message to Discord: {ex.Message}");
+                        Logger.LogError($"Error sending message to Discord: {ex.Message}");
                     }
                 }
             }
@@ -159,7 +160,7 @@ namespace AdminSessionLog
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{ModuleName} | Error sending message to Discord: {ex.Message}");
+                    Logger.LogError($"Error sending message to Discord: {ex.Message}");
                 }
             }
             return HookResult.Continue;
@@ -202,7 +203,7 @@ namespace AdminSessionLog
         {
             string configPath = Path.Combine(GetConfigDirectory(), "AdminSessionLogConfig.json");
             _config = AdminSessionLogConfig.Load(configPath);
-            Console.WriteLine($"{ModuleName} | Configuration reloaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
+            Logger.LogInformation($"Configuration reloaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
 
             InitializeDiscord();
         }
