@@ -15,7 +15,7 @@ namespace AdminSessionLog
     public class AdminSessionLog : BasePlugin
     {
         public override string ModuleName => "AdminSessionLog";
-        public override string ModuleVersion => "v1.0.2";
+        public override string ModuleVersion => "v1.0.3";
         public override string ModuleAuthor => "E!N";
 
         private IDiscordUtilitiesAPI? DiscordUtilities;
@@ -24,7 +24,6 @@ namespace AdminSessionLog
         private readonly Dictionary<ulong, DateTime> sessionStartTimes = [];
         private ulong channelId;
         public bool connect;
-        private readonly string serverName = ConVar.Find("hostname")?.StringValue ?? "Unknown Server";
 
         public override void OnAllPluginsLoaded(bool hotReload)
         {
@@ -88,7 +87,6 @@ namespace AdminSessionLog
                 Logger.LogError($"Admin flags are missing or Userid is null");
                 return HookResult.Continue;
             }
-
             if (_config.AdminFlag.Any(flag => AdminManager.PlayerHasPermissions(@event.Userid, flag)))
             {
                 sessionStartTimes[@event.Userid.SteamID] = DateTime.Now;
@@ -100,7 +98,7 @@ namespace AdminSessionLog
                         var embedBuilder = new Embeds.Builder
                         {
                             Title = Localizer["asl.TitleConnect"],
-                            Description = Localizer["asl.Server", serverName],
+                            Description = Localizer["asl.Server", ConVar.Find("hostname")?.StringValue ?? "Unknown Server"],
                             Color = Localizer["asl.EmbedColorConnect"],
                         };
 
@@ -110,7 +108,6 @@ namespace AdminSessionLog
                             Description = Localizer["asl.AdministratorDescription", @event.Userid.PlayerName, @event.Userid.SteamID],
                             Inline = false
                         });
-
                         DiscordUtilities?.SendCustomMessageToChannel("admin_session_log", channelId, null, embedBuilder, null);
                     }
                     catch (Exception ex)
@@ -139,7 +136,7 @@ namespace AdminSessionLog
                     var embedBuilder = new Embeds.Builder
                     {
                         Title = Localizer["asl.TitleDisconnect"],
-                        Description = Localizer["asl.Server", serverName],
+                        Description = Localizer["asl.Server", ConVar.Find("hostname")?.StringValue ?? "Unknown Server"],
                         Color = Localizer["asl.EmbedColorDisconnect"],
                     };
 
