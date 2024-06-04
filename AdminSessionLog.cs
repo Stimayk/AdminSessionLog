@@ -1,29 +1,27 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
-using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
-using DiscordUtilitiesAPI;
-using DiscordUtilitiesAPI.Builders;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System.Text;
+using System.Text.Json.Serialization;
 
 namespace AdminSessionLog
 {
     public class AdminSessionLog : BasePlugin
     {
         public override string ModuleName => "AdminSessionLog";
-        public override string ModuleVersion => "v1.0.3";
+        public override string ModuleVersion => "v1.1.0";
         public override string ModuleAuthor => "E!N";
 
-        private IDiscordUtilitiesAPI? DiscordUtilities;
         private AdminSessionLogConfig? _config;
 
         private readonly Dictionary<ulong, DateTime> sessionStartTimes = [];
-        private ulong channelId;
-        public bool connect;
+
+        private readonly HttpClient _httpClient = new();
 
         public override void OnAllPluginsLoaded(bool hotReload)
         {
@@ -31,18 +29,7 @@ namespace AdminSessionLog
             EnsureConfigDirectory(configDirectory);
             string configPath = Path.Combine(configDirectory, "AdminSessionLogConfig.json");
             _config = AdminSessionLogConfig.Load(configPath);
-            Logger.LogInformation($"Configuration loaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
-
-            DiscordUtilities = new PluginCapability<IDiscordUtilitiesAPI>("discord_utilities").Get();
-
-            if (DiscordUtilities == null)
-            {
-                Logger.LogError($"Discord Utilities are not available.");
-            }
-            else
-            {
-                InitializeDiscord();
-            }
+            Logger.LogInformation($"Configuration loaded successfully. DiscordWebhookUrl = {_config.DiscordWebhookUrl}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
         }
 
         private static string GetConfigDirectory()
@@ -59,26 +46,6 @@ namespace AdminSessionLog
             }
         }
 
-        private void InitializeDiscord()
-        {
-            if (_config == null)
-            {
-                Logger.LogError($"Configuration is not loaded.");
-                return;
-            }
-
-            channelId = _config.DiscordChannelId;
-            connect = _config.AllowConnectMessage;
-
-            if (channelId == 0)
-            {
-                Logger.LogError($"Some configuration settings - ChannelID: {channelId}");
-                return;
-            }
-
-            Logger.LogInformation($"Initialized successfully.");
-        }
-
         [GameEventHandler]
         public HookResult PlayerConnect(EventPlayerConnectFull @event, GameEventInfo info)
         {
@@ -91,29 +58,14 @@ namespace AdminSessionLog
             {
                 sessionStartTimes[@event.Userid.SteamID] = DateTime.Now;
 
-                if (connect)
+                if (_config.AllowConnectMessage)
                 {
-                    try
-                    {
-                        var embedBuilder = new Embeds.Builder
-                        {
-                            Title = Localizer["asl.TitleConnect"],
-                            Description = Localizer["asl.Server", ConVar.Find("hostname")?.StringValue ?? "Unknown Server"],
-                            Color = Localizer["asl.EmbedColorConnect"],
-                        };
-
-                        embedBuilder.Fields.Add(new Embeds.FieldsData
-                        {
-                            Title = Localizer["asl.Administrator"],
-                            Description = Localizer["asl.AdministratorDescription", @event.Userid.PlayerName, @event.Userid.SteamID],
-                            Inline = false
-                        });
-                        DiscordUtilities?.SendCustomMessageToChannel("admin_session_log", channelId, null, embedBuilder, null);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError($"Error sending message to Discord: {ex.Message}");
-                    }
+                    SendDiscordMessage(CreateEmbedMessage(
+                        Localizer["asl.TitleConnect"],
+                        Localizer["asl.EmbedColorConnect"],
+                        Localizer["asl.Administrator"],
+                        Localizer["asl.AdministratorDescription", @event.Userid.PlayerName, @event.Userid.SteamID]
+                    ));
                 }
             }
 
@@ -131,34 +83,14 @@ namespace AdminSessionLog
             {
                 TimeSpan sessionLength = DateTime.Now - startTime;
                 string formattedLength = FormatSessionLength(sessionLength);
-                try
-                {
-                    var embedBuilder = new Embeds.Builder
-                    {
-                        Title = Localizer["asl.TitleDisconnect"],
-                        Description = Localizer["asl.Server", ConVar.Find("hostname")?.StringValue ?? "Unknown Server"],
-                        Color = Localizer["asl.EmbedColorDisconnect"],
-                    };
-
-                    embedBuilder.Fields.Add(new Embeds.FieldsData
-                    {
-                        Title = Localizer["asl.Administrator"],
-                        Description = Localizer["asl.AdministratorDescription", @event.Name, @event.Xuid],
-                        Inline = true
-                    });
-                    embedBuilder.Fields.Add(new Embeds.FieldsData
-                    {
-                        Title = Localizer["asl.SessionLength"],
-                        Description = formattedLength,
-                        Inline = true
-                    });
-
-                    DiscordUtilities?.SendCustomMessageToChannel("admin_session_log", channelId, null, embedBuilder, null);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError($"Error sending message to Discord: {ex.Message}");
-                }
+                SendDiscordMessage(CreateEmbedMessage(
+                    Localizer["asl.TitleDisconnect"],
+                    Localizer["asl.EmbedColorDisconnect"],
+                    Localizer["asl.Administrator"],
+                    Localizer["asl.AdministratorDescription", @event.Name, @event.Xuid],
+                    Localizer["asl.SessionLength"],
+                    formattedLength
+                ));
             }
             return HookResult.Continue;
         }
@@ -193,6 +125,73 @@ namespace AdminSessionLog
             };
         }
 
+        private string CreateEmbedMessage(string title, string hexColor, string field1Title, string field1Description, string? field2Title = null, string? field2Description = null)
+        {
+            hexColor = hexColor.TrimStart('#');
+            if (!int.TryParse(hexColor, System.Globalization.NumberStyles.HexNumber, null, out int colorInt))
+            {
+                Logger.LogError($"Ошибка преобразования цвета: {hexColor}");
+                return string.Empty;
+            }
+
+            var fields = new List<Dictionary<string, object>>
+            {
+                new() {
+                    { "name", field1Title },
+                    { "value", field1Description },
+                    { "inline", false }
+                }
+            };
+
+            if (field2Title != null && field2Description != null)
+            {
+                fields.Add(new Dictionary<string, object>
+                {
+                    { "name", field2Title },
+                    { "value", field2Description },
+                    { "inline", true }
+                });
+            }
+
+            var embed = new Dictionary<string, object>
+            {
+                { "title", title },
+                { "color", colorInt },
+                { "fields", fields }
+            };
+
+            string? hostname = ConVar.Find("hostname")?.StringValue;
+            if (!string.IsNullOrEmpty(hostname))
+            {
+                embed["description"] = $"{Localizer["asl.Server", hostname]}";
+            }
+
+            return JsonConvert.SerializeObject(new { embeds = new[] { embed } }, Formatting.Indented);
+        }
+
+        private async void SendDiscordMessage(string jsonPayload)
+        {
+            try
+            {
+                if (_config!.DiscordWebhookUrl != null)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Post, _config.DiscordWebhookUrl);
+                    request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                    using var response = await _httpClient.SendAsync(request);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Logger.LogError($"Ошибка отправки сообщения в Discord: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Ошибка отправки сообщения в Discord: {ex.Message}");
+            }
+        }
+
         [ConsoleCommand("css_aslreload", "Reload Config")]
         [CommandHelper(whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
         [RequiresPermissions("@css/root")]
@@ -200,15 +199,15 @@ namespace AdminSessionLog
         {
             string configPath = Path.Combine(GetConfigDirectory(), "AdminSessionLogConfig.json");
             _config = AdminSessionLogConfig.Load(configPath);
-            Logger.LogInformation($"Configuration reloaded successfully. DiscordChannelId = {_config.DiscordChannelId}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
-
-            InitializeDiscord();
+            Logger.LogInformation($"Configuration reloaded successfully. DiscordWebhookUrl = {_config.DiscordWebhookUrl}, AdminFlag = {string.Join(", ", _config.AdminFlag ?? [])}, AllowConnectMessage = {_config.AllowConnectMessage}");
         }
     }
 
     public class AdminSessionLogConfig
     {
-        public ulong DiscordChannelId { get; set; } = 0;
+        [JsonPropertyName("DiscordWebhookUrl")]
+        public string? DiscordWebhookUrl { get; set; }
+
         public string[]? AdminFlag { get; set; } = ["@css/reservation",
                                                     "@css/generic",
                                                     "@css/kick",
